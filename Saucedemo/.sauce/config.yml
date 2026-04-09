@@ -1,0 +1,21 @@
+apiVersion: v1alpha
+kind: playwright
+metadata:
+  name: saucedemo-tests
+  tags:
+    - saucedemo
+    - e2e
+sauce:
+  region: eu-central-1
+  concurrency: 1
+  npm:
+    registry: https://registry.npmjs.org
+playwright:
+  version: 1.58.1
+  configFile: playwright-sauce.config.ts
+suites:
+  - name: purchase-flow
+    testMatch:
+      - tests/saucedemo.spec.ts
+    params:
+      browserName: chromium

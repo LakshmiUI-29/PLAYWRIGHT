@@ -1,0 +1,106 @@
+pipeline {
+    agent any
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timestamps()
+        timeout(time: 30, unit: 'MINUTES')
+    }
+    
+    environment {
+        SAUCE_USERNAME = credentials('sauce-username')
+        SAUCE_ACCESS_KEY = credentials('sauce-access-key')
+        NODE_ENV = 'test'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                echo "✓ Code checked out successfully"
+            }
+        }
+        
+        stage('Install Dependencies') {
+            steps {
+                sh '''
+                    echo "Installing Node dependencies..."
+                    npm ci  # Clean install (better for CI than npm install)
+                    npx playwright install  # Install browser binaries
+                '''
+            }
+        }
+        
+        stage('Lint & Format Check') {
+            steps {
+                sh '''
+                    echo "Checking code quality..."
+                    # Optional: Add ESLint, Prettier, etc.
+                    npm run lint || true
+                '''
+            }
+        }
+        
+        stage('Run Local Tests') {
+            steps {
+                sh '''
+                    echo "Running tests locally..."
+                    npx playwright test \
+                        --project=chromium \
+                        --reporter=html,json
+                '''
+            }
+            post {
+                always {
+                    publishHTML([
+                        reportDir: 'playwright-report',
+                        reportFiles: 'index.html',
+                        reportName: 'Playwright Report - Local',
+                        keepAll: true
+                    ])
+                }
+            }
+        }
+        
+        stage('Run Sauce Labs Tests') {
+            steps {
+                sh '''
+                    echo "Running tests on Sauce Labs..."
+                    npx saucectl run
+                '''
+            }
+            post {
+                always {
+                    echo "Sauce Labs test run completed"
+                }
+            }
+        }
+        
+        stage('Archive Results') {
+            steps {
+                sh '''
+                    echo "Archiving test results..."
+                    # Archive HTML reports
+                    tar -czf playwright-report.tar.gz playwright-report/ || true
+                '''
+                archiveArtifacts artifacts: 'playwright-report.tar.gz', allowEmptyArchive: true
+                archiveArtifacts artifacts: 'test-results/**/*.json', allowEmptyArchive: true
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo "✓ Pipeline execution completed"
+            cleanWs()  // Clean workspace after build
+        }
+        success {
+            echo "✓ All tests passed!"
+            // Optional: Send success notification
+        }
+        failure {
+            echo "✗ Tests failed! Check reports above"
+            // Optional: Send failure notification
+        }
+    }
+}
